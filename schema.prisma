@@ -1,0 +1,539 @@
+// AURA OS — Prisma Schema
+// Baseado na seção 3 do documento AURA-OS-Prompt-Completo.md
+// Entidades marcadas com [INFERIDO] não estavam detalhadas no documento original
+// e foram propostas por mim — revisar antes de usar em produção.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  OWNER
+  ADMIN
+  PROFESSIONAL
+  RECEPTIONIST
+}
+
+enum CommissionPeriod {
+  weekly
+  biweekly
+  monthly
+}
+
+enum ServiceCategory {
+  cilios
+  corporal
+  pele
+  sobrancelhas
+  unhas
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  TRANSFER
+  INSTALLMENT_CREDIT
+  VOUCHER
+  PACKAGE
+  FREE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  REFUNDED
+  OVERDUE
+}
+
+enum FinancialType {
+  INCOME
+  EXPENSE
+}
+
+enum FinancialCategory {
+  SERVICE
+  PRODUCT_SALE
+  PACKAGE_SALE
+  COMMISSION_PAYMENT
+  RENT
+  UTILITIES
+  OTHER
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum PhotoType {
+  before
+  after
+  during
+  document
+}
+
+enum ClientStatus {
+  active
+  inactive
+  vip
+}
+
+// ============================================================
+// CORE
+// ============================================================
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  phone     String?
+  email     String?
+  address   String?
+  city      String?
+  state     String?
+  cnpj      String?
+  active    Boolean  @default(true)
+  plan      String   @default("standard")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profiles       Profile[]
+  clients        Client[]
+  services       Service[]
+  appointments   Appointment[]
+  packages       Package[]
+  financialRecords FinancialRecord[]
+  commissions    Commission[]
+  anamneses      Anamnesis[]
+  photos         Photo[]
+  products       Product[]
+  campaigns      Campaign[]
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+
+  @@map("tenants")
+}
+
+model Profile {
+  id                     String            @id @default(cuid())
+  tenantId               String
+  userId                 String            @unique // Supabase Auth user id
+  name                   String
+  email                  String
+  phone                  String?
+  avatarUrl              String?
+  role                   Role
+  commissionRate         Decimal?          @db.Decimal(5, 2) // ex: 70.00
+  commissionPaymentPeriod CommissionPeriod?
+  specialties            String[]          // IDs de Service
+  workingHours           Json?
+  active                 Boolean           @default(true)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  appointments Appointment[] @relation("ProfessionalAppointments")
+  commissions  Commission[]
+  auditLogs    AuditLog[]
+
+  @@index([tenantId])
+  @@map("profiles")
+}
+
+model Client {
+  id               String       @id @default(cuid())
+  tenantId         String
+  name             String
+  email            String?
+  phone            String
+  phoneSecondary   String?
+  birthDate        DateTime?
+  gender           String?
+  cpf              String?
+
+  // LGPD
+  consentData      Boolean      @default(false)
+  consentPhotos    Boolean      @default(false)
+  consentMarketing Boolean      @default(false)
+  consentDate      DateTime?
+
+  // CRM
+  status           ClientStatus @default(active)
+  lastVisit        DateTime?
+  totalVisits      Int          @default(0)
+  totalSpent       Decimal      @default(0) @db.Decimal(10, 2)
+  firstVisit       DateTime?
+
+  tags             String[]
+  instagram        String?
+  howDidYouHear    String?
+  notes            String?
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  appointments Appointment[]
+  packages     Package[]
+  anamneses    Anamnesis[]
+  photos       Photo[]
+  campaignClients CampaignClient[]
+
+  @@index([tenantId])
+  @@index([phone])
+  @@map("clients")
+}
+
+model Service {
+  id                String          @id @default(cuid())
+  tenantId          String
+  category          ServiceCategory
+  name              String
+  description       String?
+  duration          Int             // minutos
+  price             Decimal         @db.Decimal(10, 2)
+  costPrice         Decimal?        @db.Decimal(10, 2)
+  color             String?
+
+  isMaintenance     Boolean         @default(false)
+  maintenanceOf     String?         // id do Service "pai"
+  maintenanceDays   Int?
+
+  isPackage         Boolean         @default(false)
+  packageSessions   Int?
+
+  requiresAnamnesis Boolean         @default(false)
+  active            Boolean         @default(true)
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  appointments Appointment[]
+  packages     Package[]
+  anamneses    Anamnesis[]
+
+  @@index([tenantId])
+  @@map("services")
+}
+
+model Appointment {
+  id            String            @id @default(cuid())
+  tenantId      String
+  clientId      String
+  professionalId String
+  serviceId     String
+
+  startTime     DateTime
+  endTime       DateTime
+  status        AppointmentStatus @default(SCHEDULED)
+
+  price         Decimal           @db.Decimal(10, 2)
+  discount      Decimal?          @db.Decimal(10, 2)
+  discountReason String?
+  finalPrice    Decimal           @db.Decimal(10, 2)
+
+  paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus     @default(PENDING)
+
+  // Snapshot da comissão no momento do agendamento
+  commissionRate   Decimal?       @db.Decimal(5, 2)
+  commissionAmount Decimal?       @db.Decimal(10, 2)
+  commissionPaid   Boolean        @default(false)
+  commissionPaidAt DateTime?
+
+  packageId          String?
+  packageSessionUsed Boolean      @default(false)
+
+  notes       String?
+  evolutions  String?
+
+  reminderSent      Boolean @default(false)
+  confirmationSent  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  client       Client   @relation(fields: [clientId], references: [id])
+  professional Profile  @relation("ProfessionalAppointments", fields: [professionalId], references: [id])
+  service      Service  @relation(fields: [serviceId], references: [id])
+  package      Package? @relation(fields: [packageId], references: [id])
+
+  financialRecords FinancialRecord[]
+  photos           Photo[]
+  anamneses        Anamnesis[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([professionalId])
+  @@index([startTime])
+  @@map("appointments")
+}
+
+model Package {
+  id             String   @id @default(cuid())
+  tenantId       String
+  clientId       String
+  serviceId      String
+
+  totalSessions     Int
+  sessionsUsed      Int      @default(0)
+  sessionsRemaining Int
+
+  pricePaid      Decimal  @db.Decimal(10, 2)
+  pricePerSession Decimal @db.Decimal(10, 2)
+  validUntil     DateTime?
+  active         Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  client       Client        @relation(fields: [clientId], references: [id])
+  service      Service       @relation(fields: [serviceId], references: [id])
+  appointments Appointment[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("packages")
+}
+
+model FinancialRecord {
+  id             String            @id @default(cuid())
+  tenantId       String
+  type           FinancialType
+  category       FinancialCategory
+  amount         Decimal           @db.Decimal(10, 2)
+  date           DateTime
+  description    String?
+  appointmentId  String?
+  professionalId String?
+
+  paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus?
+  receiptUrl    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([tenantId])
+  @@index([date])
+  @@map("financial_records")
+}
+
+model Commission {
+  id             String   @id @default(cuid())
+  tenantId       String
+  professionalId String
+
+  periodStart DateTime
+  periodEnd   DateTime
+  totalServices Int
+  totalAmount   Decimal @db.Decimal(10, 2)
+
+  commissionRate   Decimal @db.Decimal(5, 2)
+  commissionAmount Decimal @db.Decimal(10, 2)
+  status           CommissionStatus @default(PENDING)
+
+  paidAt   DateTime?
+  paidBy   String?
+  details  Json?    // breakdown por serviço
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant  @relation(fields: [tenantId], references: [id])
+  professional Profile @relation(fields: [professionalId], references: [id])
+
+  @@index([tenantId])
+  @@index([professionalId])
+  @@map("commissions")
+}
+
+model Anamnesis {
+  id            String   @id @default(cuid())
+  tenantId      String
+  clientId      String
+  serviceId     String
+  appointmentId String?
+
+  data           Json    // flexível por tipo de serviço
+  allergies      String?
+  medications    String?
+  medicalHistory String?
+  pregnancy      Boolean?
+  skinType       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  client      Client       @relation(fields: [clientId], references: [id])
+  service     Service      @relation(fields: [serviceId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("anamneses")
+}
+
+model Photo {
+  id            String    @id @default(cuid())
+  tenantId      String
+  clientId      String
+  appointmentId String?
+
+  url            String
+  type           PhotoType
+  description    String?
+  consentSigned  Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  client      Client       @relation(fields: [clientId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("photos")
+}
+
+// ============================================================
+// [INFERIDO] — não detalhado no documento original.
+// Estrutura proposta por mim; revisar antes de usar.
+// ============================================================
+
+model Product {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  sku        String?
+  category   String?
+  costPrice  Decimal  @db.Decimal(10, 2)
+  salePrice  Decimal? @db.Decimal(10, 2)
+  stockQty   Int      @default(0)
+  minStock   Int      @default(0)
+  active     Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  stockMovements StockMovement[]
+
+  @@index([tenantId])
+  @@map("products")
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  productId String
+  type      String   // "in" | "out"
+  quantity  Int
+  reason    String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@map("stock_movements")
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  message     String
+  channel     String   @default("whatsapp")
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  status      String   @default("draft") // draft | scheduled | sent | cancelled
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id])
+  clients CampaignClient[]
+
+  @@index([tenantId])
+  @@map("campaigns")
+}
+
+model CampaignClient {
+  id         String   @id @default(cuid())
+  campaignId String
+  clientId   String
+  status     String   @default("pending") // pending | sent | failed | responded
+  sentAt     DateTime?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  client   Client   @relation(fields: [clientId], references: [id])
+
+  @@index([campaignId])
+  @@index([clientId])
+  @@map("campaign_clients")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  profileId String?
+  action    String   // ex: "appointment.created", "commission.paid"
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  profile Profile? @relation(fields: [profileId], references: [id])
+
+  @@index([tenantId])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  tenantId  String
+  title     String
+  message   String
+  type      String   @default("info") // info | warning | success | danger
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("notifications")
+}
