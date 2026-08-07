@@ -27,9 +27,10 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isProtectedRoute = request.nextUrl.pathname.startsWith("/app");
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
 
-  if (!user && !isLoginPage) {
+  if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -37,7 +38,7 @@ export async function middleware(request: NextRequest) {
 
   if (user && isLoginPage) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/app";
     return NextResponse.redirect(url);
   }
 

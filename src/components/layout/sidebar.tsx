@@ -6,11 +6,11 @@ import { LayoutDashboard, CalendarDays, Users, Wallet, Settings } from "lucide-r
 import { cn } from "@/lib/utils";
 
 const items = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/agenda", label: "Agenda", icon: CalendarDays },
-  { href: "/clientes", label: "Clientes", icon: Users },
-  { href: "/financeiro", label: "Financeiro", icon: Wallet },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
+  { href: "/app", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/app/agenda", label: "Agenda", icon: CalendarDays },
+  { href: "/app/clientes", label: "Clientes", icon: Users },
+  { href: "/app/financeiro", label: "Financeiro", icon: Wallet },
+  { href: "/app/configuracoes", label: "Configurações", icon: Settings },
 ];
 
 export function Sidebar() {

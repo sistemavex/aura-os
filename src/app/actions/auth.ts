@@ -15,8 +15,8 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("E-mail ou senha incorretos")}`);
   }
 
-  revalidatePath("/", "layout");
-  redirect("/");
+  revalidatePath("/app", "layout");
+  redirect("/app");
 }
 
 export async function logout() {
