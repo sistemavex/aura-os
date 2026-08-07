@@ -2,41 +2,65 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
+import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 
-// TODO: substituir por dados reais assim que /api/dashboard/stats existir (Fase 1)
-const mockStats = {
-  revenueToday: 1240,
-  appointmentsToday: 8,
-  occupancyRate: 0.72,
-  newClients: 3,
-};
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-export default function DashboardPage() {
+  const profile = user
+    ? await prisma.profile.findUnique({ where: { userId: user.id } })
+    : null;
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const [revenueTodayAgg, appointmentsToday, newClientsToday, totalServices] = await Promise.all([
+    prisma.financialRecord.aggregate({
+      _sum: { amount: true },
+      where: { type: "INCOME", date: { gte: startOfDay, lte: endOfDay } },
+    }),
+    prisma.appointment.count({
+      where: { startTime: { gte: startOfDay, lte: endOfDay } },
+    }),
+    prisma.client.count({
+      where: { createdAt: { gte: startOfDay, lte: endOfDay } },
+    }),
+    prisma.service.count({ where: { active: true } }),
+  ]);
+
+  const revenueToday = Number(revenueTodayAgg._sum.amount ?? 0);
+
   return (
-    <AppShell title="Dashboard" subtitle="Visão geral do dia" userName="AURA Beauté">
+    <AppShell title="Dashboard" subtitle="Visão geral do dia" userName={profile?.name ?? "AURA"}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader>
             <CardDescription>Faturamento hoje</CardDescription>
-            <CardTitle className="text-2xl">{formatCurrency(mockStats.revenueToday)}</CardTitle>
+            <CardTitle className="text-2xl">{formatCurrency(revenueToday)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <CardDescription>Agendamentos hoje</CardDescription>
-            <CardTitle className="text-2xl">{mockStats.appointmentsToday}</CardTitle>
+            <CardTitle className="text-2xl">{appointmentsToday}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Taxa de ocupação</CardDescription>
-            <CardTitle className="text-2xl">{Math.round(mockStats.occupancyRate * 100)}%</CardTitle>
+            <CardDescription>Clientes novos hoje</CardDescription>
+            <CardTitle className="text-2xl">{newClientsToday}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Clientes novos</CardDescription>
-            <CardTitle className="text-2xl">{mockStats.newClients}</CardTitle>
+            <CardDescription>Serviços ativos</CardDescription>
+            <CardTitle className="text-2xl">{totalServices}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -45,10 +69,10 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Status</CardTitle>
-            <CardDescription>Este dashboard ainda usa dados mockados.</CardDescription>
+            <CardDescription>Conectado ao banco real via Prisma.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Badge variant="warning">Aguardando conexão com o banco (Fase 1)</Badge>
+            <Badge variant="success">Dados reais — Fase 1 em andamento</Badge>
           </CardContent>
         </Card>
       </div>

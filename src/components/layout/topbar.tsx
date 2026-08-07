@@ -1,6 +1,7 @@
-import { Bell, Search } from "lucide-react";
+import { Bell, Search, LogOut } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { getInitials } from "@/lib/utils";
+import { logout } from "@/app/actions/auth";
 
 interface TopBarProps {
   title: string;
@@ -32,6 +33,16 @@ export function TopBar({ title, subtitle, userName = "?" }: TopBarProps) {
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
           {getInitials(userName)}
         </div>
+
+        <form action={logout}>
+          <button
+            type="submit"
+            aria-label="Sair"
+            className="rounded p-2 text-muted hover:bg-white/5 hover:text-danger"
+          >
+            <LogOut size={18} />
+          </button>
+        </form>
       </div>
     </header>
   );
